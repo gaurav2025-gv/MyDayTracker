@@ -3,7 +3,11 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 // Load API Key from environment variables
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 console.log("Gemini Service: API_KEY detected:", !!API_KEY);
-const genAI = new GoogleGenerativeAI(API_KEY);
+
+let genAI = null;
+if (API_KEY && API_KEY !== 'YOUR_GEMINI_API_KEY_HERE') {
+    genAI = new GoogleGenerativeAI(API_KEY);
+}
 
 export const analyzeDayPerformance = async (dateData, contextStats) => {
     console.log("Gemini Service: analyzeDayPerformance started");

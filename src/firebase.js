@@ -11,7 +11,22 @@ const firebaseConfig = {
     appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
-export const db = getFirestore(app);
+// Safety check: Avoid crashing if config is missing (common on initial deploys)
+let app;
+let auth;
+let googleProvider;
+let db;
+
+try {
+    if (!firebaseConfig.apiKey) {
+        console.warn("Firebase API Key is missing. Check your environment variables.");
+    }
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    googleProvider = new GoogleAuthProvider();
+    db = getFirestore(app);
+} catch (error) {
+    console.error("Firebase Initialization Error:", error);
+}
+
+export { auth, googleProvider, db };

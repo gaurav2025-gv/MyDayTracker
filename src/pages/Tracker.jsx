@@ -1,3 +1,17 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+    Plus,
+    Trash2,
+    Zap,
+    ChevronLeft,
+    ChevronRight,
+    Calendar,
+    Clock,
+    CheckCircle2,
+    Circle,
+    Brain
+} from 'lucide-react';
 import { db } from '../firebase';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';

@@ -11,11 +11,34 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        if (!auth) {
+            console.warn("Auth not initialized. Proceeding as guest.");
+            setLoading(false);
+            return;
+        }
+
+        // Safety Timeout: If Firebase takes too long (e.g. 5s), proceed as guest
+        const timer = setTimeout(() => {
+            if (loading) {
+                console.warn("Auth initialization timed out. Proceeding as guest.");
+                setLoading(false);
+            }
+        }, 5000);
+
         const unsubscribe = onAuthStateChanged(auth, (user) => {
             setUser(user);
             setLoading(false);
+            clearTimeout(timer);
+        }, (error) => {
+            console.error("Auth state error:", error);
+            setLoading(false);
+            clearTimeout(timer);
         });
-        return unsubscribe;
+
+        return () => {
+            unsubscribe();
+            clearTimeout(timer);
+        };
     }, []);
 
     const login = async () => {
