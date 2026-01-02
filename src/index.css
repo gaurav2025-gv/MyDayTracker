@@ -1,0 +1,121 @@
+@import "tailwindcss";
+
+@theme {
+  /* Rubrik Palette */
+  --color-cyber-cyan: #00C9C8;
+  --color-cyber-purple: #8B5CF6;
+  --color-obsidian: #04060a;
+  
+  /* Modern Typography */
+  --font-outfit: "Outfit", sans-serif;
+  
+  /* Animations */
+  --animate-reveal: reveal 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;900&display=swap');
+
+/* --- Global Reset & Centering --- */
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply font-outfit bg-obsidian text-white min-h-screen antialiased overflow-x-hidden;
+    
+    /* Premium Rubrik Background Effect */
+    background-image: 
+      radial-gradient(circle at 0% 0%, rgba(0, 201, 200, 0.08) 0%, transparent 40%),
+      radial-gradient(circle at 100% 100%, rgba(139, 92, 246, 0.08) 0%, transparent 40%),
+      url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  }
+
+  #root {
+    @apply flex flex-col items-center w-full min-h-screen;
+  }
+
+  main {
+    @apply w-full max-w-[1280px] mx-auto px-8;
+  }
+}
+
+/* --- Rubrik Component System (v4 Syntax) --- */
+@layer components {
+  .rubrik-card {
+    @apply bg-[#0F121D]/40 backdrop-blur-xl border border-white/5 rounded-2xl p-6 
+           transition-all duration-500 shadow-2xl;
+  }
+  
+  .rubrik-card:hover {
+    @apply border-cyber-cyan/30 bg-[#0F121D]/60 -translate-y-1;
+  }
+
+  .btn-primary {
+    @apply px-8 py-3 rounded-full font-bold text-sm uppercase tracking-wider 
+           bg-cyber-cyan text-obsidian transition-all duration-300 inline-flex items-center gap-2;
+    box-shadow: 0 0 15px rgba(0, 201, 200, 0.2);
+  }
+
+  .btn-primary:hover {
+    @apply bg-white scale-105;
+    box-shadow: 0 0 25px rgba(0, 201, 200, 0.5);
+  }
+
+  .btn-secondary {
+    @apply px-8 py-3 rounded-full font-bold text-sm uppercase tracking-wider 
+           border border-white/20 text-white transition-all duration-300 
+           hover:border-cyber-cyan hover:text-cyber-cyan bg-transparent active:scale-95;
+  }
+
+  .input-field {
+    @apply w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 
+           text-white outline-none focus:border-cyber-cyan transition-all 
+           placeholder:text-slate-600;
+  }
+
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-white via-white to-cyber-cyan;
+  }
+}
+
+/* --- Scrollbar & Selection --- */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #04060a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #00C9C8;
+}
+
+::selection {
+  background: rgba(0, 201, 200, 0.3);
+  color: white;
+}
+
+/* --- Keyframes --- */
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
