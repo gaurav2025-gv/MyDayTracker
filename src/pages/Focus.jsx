@@ -2,16 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMusic } from '../context/MusicContext';
 import { Play, Pause, RotateCcw, Music, Volume2, Plus, Trash2, Zap, Link as LinkIcon, Save, Coffee, ListMusic, Settings2, Check } from 'lucide-react';
+import { db } from '../firebase';
+import { doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { useAuth } from '../context/AuthContext';
 
 const DEFAULT_TRACK = "https://open.spotify.com/embed/playlist/0vvXsWCC9xrXsKd4FyS8kM?utm_source=generator&theme=0";
 
 export const Focus = () => {
+    const { user } = useAuth();
     const [totalSeconds, setTotalSeconds] = useState(25 * 60);
     const [seconds, setSeconds] = useState(25 * 60);
     const [isActive, setIsActive] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [customMinutes, setCustomMinutes] = useState('25'); // Use string for better input handling
-
+    const [isInitialLoad, setIsInitialLoad] = useState(true);
 
 
     const {
@@ -28,20 +32,69 @@ export const Focus = () => {
     } = useMusic();
 
     // Library State
-    const [myTracks, setMyTracks] = useState(() => {
-        const saved = localStorage.getItem('daymaker_tracks');
-        return saved ? JSON.parse(saved) : [];
-    });
+    const [myTracks, setMyTracks] = useState([]);
     const [inputUrl, setInputUrl] = useState('');
     const [inputName, setInputName] = useState('');
     const [showAddForm, setShowAddForm] = useState(false);
     const [addMode, setAddMode] = useState('song'); // 'song' or 'playlist'
 
 
-    // Save to LocalStorage
+    // Load from Firestore or LocalStorage
     useEffect(() => {
-        localStorage.setItem('daymaker_tracks', JSON.stringify(myTracks));
-    }, [myTracks]);
+        if (!user) {
+            const saved = localStorage.getItem('daymaker_tracks');
+            const savedMins = localStorage.getItem('daymaker_focus_mins');
+            if (saved) setMyTracks(JSON.parse(saved));
+            if (savedMins) {
+                const m = parseInt(savedMins);
+                setTotalSeconds(m * 60);
+                setSeconds(m * 60);
+                setCustomMinutes(savedMins);
+            }
+            setIsInitialLoad(false);
+            return;
+        }
+
+        const docRef = doc(db, `users/${user.uid}/focus`, 'settings');
+        const unsubscribe = onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                setMyTracks(data.myTracks || []);
+                if (data.customMinutes) {
+                    const m = parseInt(data.customMinutes);
+                    setTotalSeconds(m * 60);
+                    // Only update current seconds if timer is NOT active to avoid jumping
+                    setSeconds(prev => isActive ? prev : m * 60);
+                    setCustomMinutes(data.customMinutes);
+                }
+            }
+            setIsInitialLoad(false);
+        });
+
+        return () => unsubscribe();
+    }, [user, isActive]);
+
+    // Save to Firestore or LocalStorage
+    useEffect(() => {
+        if (isInitialLoad) return;
+
+        const sync = async () => {
+            if (user) {
+                const docRef = doc(db, `users/${user.uid}/focus`, 'settings');
+                await setDoc(docRef, {
+                    myTracks,
+                    customMinutes,
+                    updatedAt: new Date().toISOString()
+                });
+            } else {
+                localStorage.setItem('daymaker_tracks', JSON.stringify(myTracks));
+                localStorage.setItem('daymaker_focus_mins', customMinutes);
+            }
+        };
+
+        const handler = setTimeout(sync, 1000);
+        return () => clearTimeout(handler);
+    }, [myTracks, customMinutes, user, isInitialLoad]);
 
     // Timer Logic
     useEffect(() => {

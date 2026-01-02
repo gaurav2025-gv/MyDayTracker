@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { ChevronLeft, ChevronRight, Save, Trash2, ZoomIn, ZoomOut, Bold, Italic, Type, Palette, Minus, Plus, Search, LayoutTemplate, Image as ImageIcon, Upload, Sparkles, BrainCircuit, Move, Check } from 'lucide-react';
 import { getDailyMotivation } from '../services/gemini';
+import { db } from '../firebase';
+import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { useAuth } from '../context/AuthContext';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -19,100 +22,99 @@ const FONTS = [
 ];
 
 export const DigitalPlanner = () => {
-    // ... existing state ...
+    const { user } = useAuth();
     const [numPages, setNumPages] = useState(null);
-    const [pageNumber, setPageNumber] = useState(() => {
-        const savedPage = localStorage.getItem('daymaker_planner_page');
-        return savedPage ? parseInt(savedPage) : 1;
-    });
+    const [pageNumber, setPageNumber] = useState(1);
+    const [isInitialLoad, setIsInitialLoad] = useState(true);
 
-    // AI State
-    const [aiMessage, setAiMessage] = useState(() => {
-        const saved = localStorage.getItem('daymaker_daily_quote');
-        const savedDate = localStorage.getItem('daymaker_quote_date');
-        const today = new Date().toISOString().split('T')[0];
-
-        console.log("DigitalPlanner: Initial State", { saved, savedDate, today });
-        if (saved && savedDate === today && saved !== "") return saved;
-        return "Tap below to get your daily motivation!";
-    });
+    // ... AI State ...
+    const [aiMessage, setAiMessage] = useState("Tap below to get your daily motivation!");
     const [isThinking, setIsThinking] = useState(false);
 
-    const getAIAdvice = async () => {
-        if (isThinking) return;
-        setIsThinking(true);
-        console.log("DigitalPlanner: getAIAdvice started");
-        try {
-            const motivation = await getDailyMotivation();
-            console.log("DigitalPlanner: Motivation received", motivation);
-            setAiMessage(motivation);
-            const today = new Date().toISOString().split('T')[0];
-            localStorage.setItem('daymaker_daily_quote', motivation);
-            localStorage.setItem('daymaker_quote_date', today);
-        } catch (error) {
-            console.error("DigitalPlanner: getAIAdvice error", error);
-            setAiMessage("You are doing great! Keep showing up every single day.");
-        } finally {
-            setIsThinking(false);
-        }
-    };
-
+    // Initial Load: Page Number
     useEffect(() => {
-        const today = new Date().toISOString().split('T')[0];
-        const savedDate = localStorage.getItem('daymaker_quote_date');
-        const savedMsg = localStorage.getItem('daymaker_daily_quote');
-
-        console.log("DigitalPlanner: useEffect check", { today, savedDate, savedMsg });
-
-        // Fetch if it's a new day, or if we have no message, or if it's the placeholder
-        const needsFetch = savedDate !== today ||
-            !savedMsg ||
-            savedMsg === "Tap below to get your daily motivation!" ||
-            savedMsg === "Ready for your daily motivation? Tap below.";
-
-        if (needsFetch) {
-            console.log("DigitalPlanner: Condition met, calling getAIAdvice");
-            getAIAdvice();
-        }
+        const savedPage = localStorage.getItem('daymaker_planner_page');
+        if (savedPage) setPageNumber(parseInt(savedPage));
     }, []);
 
-    const [scale, setScale] = useState(0.7); // Default slightly smaller to fit laptop screens
+    const [scale, setScale] = useState(0.7);
     const [focusedLine, setFocusedLine] = useState(null);
 
-    // Lazy load data correctly
-    const [plannerData, setPlannerData] = useState(() => {
-        try {
-            const saved = localStorage.getItem('daymaker_planner_data');
-            return saved ? JSON.parse(saved) : {};
-        } catch (e) {
-            console.error("Failed to load planner data", e);
-            return {};
-        }
+    const [plannerData, setPlannerData] = useState({});
+    const [currentStyle, setCurrentStyle] = useState({
+        fontWeight: 'normal',
+        fontStyle: 'normal',
+        color: '#1e293b',
+        fontSize: '32px',
+        fontFamily: FONTS[0].value
     });
+    const [imgPos, setImgPos] = useState({ top: 20.5, left: 27.8, width: 44.4, height: 50 });
 
     const [jumpInput, setJumpInput] = useState('');
-
-    // Current Pen Style (Persisted)
-    const [currentStyle, setCurrentStyle] = useState(() => {
-        const saved = localStorage.getItem('daymaker_planner_style');
-        return saved ? JSON.parse(saved) : {
-            fontWeight: 'normal',
-            fontStyle: 'normal',
-            color: '#1e293b',
-            fontSize: '32px',
-            fontFamily: FONTS[0].value
-        };
-    });
-
-    // Page 4 Profile Image Positioning State
-    const [imgPos, setImgPos] = useState(() => {
-        const saved = localStorage.getItem('daymaker_planner_img_pos');
-        // settling on the most symmetrical coordinates based on feedback
-        return saved ? JSON.parse(saved) : { top: 20.5, left: 27.8, width: 44.4, height: 50 };
-    });
     const [isAdjusting, setIsAdjusting] = useState(false);
     const overlayRef = useRef(null);
     const [dragState, setDragState] = useState(null);
+
+    // Real-time Sync from Firestore
+    useEffect(() => {
+        if (!user) {
+            // Unauthenticated: Load from localStorage
+            const savedData = localStorage.getItem('daymaker_planner_data');
+            const savedStyle = localStorage.getItem('daymaker_planner_style');
+            const savedPos = localStorage.getItem('daymaker_planner_img_pos');
+
+            if (savedData) setPlannerData(JSON.parse(savedData));
+            if (savedStyle) setCurrentStyle(JSON.parse(savedStyle));
+            if (savedPos) setImgPos(JSON.parse(savedPos));
+
+            setIsInitialLoad(false);
+            return;
+        }
+
+        const docRef = doc(db, `users/${user.uid}/planner`, 'settings');
+        const unsubscribe = onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                setPlannerData(data.plannerData || {});
+                setCurrentStyle(data.currentStyle || {
+                    fontWeight: 'normal', fontStyle: 'normal', color: '#1e293b',
+                    fontSize: '32px', fontFamily: FONTS[0].value
+                });
+                setImgPos(data.imgPos || { top: 20.5, left: 27.8, width: 44.4, height: 50 });
+            }
+            setIsInitialLoad(false);
+        });
+
+        return () => unsubscribe();
+    }, [user]);
+
+    // Autosave Logic (Firestore or LocalStorage)
+    useEffect(() => {
+        if (isInitialLoad) return;
+
+        const handler = setTimeout(async () => {
+            if (user) {
+                const docRef = doc(db, `users/${user.uid}/planner`, 'settings');
+                await setDoc(docRef, {
+                    plannerData,
+                    currentStyle,
+                    imgPos,
+                    updatedAt: new Date().toISOString()
+                });
+            } else {
+                localStorage.setItem('daymaker_planner_data', JSON.stringify(plannerData));
+                localStorage.setItem('daymaker_planner_style', JSON.stringify(currentStyle));
+                localStorage.setItem('daymaker_planner_img_pos', JSON.stringify(imgPos));
+            }
+        }, 1000);
+
+        return () => clearTimeout(handler);
+    }, [plannerData, currentStyle, imgPos, user, isInitialLoad]);
+
+    // Separate useEffect for Page Number (Local Session based)
+    useEffect(() => {
+        localStorage.setItem('daymaker_planner_page', pageNumber.toString());
+    }, [pageNumber]);
 
     const handleDragStart = (type, e) => {
         if (!isAdjusting) return;
@@ -162,36 +164,53 @@ export const DigitalPlanner = () => {
     }, [dragState]);
 
 
+    const getAIAdvice = async () => {
+        if (isThinking) return;
+        setIsThinking(true);
+        try {
+            const motivation = await getDailyMotivation();
+            setAiMessage(motivation);
+            const today = new Date().toISOString().split('T')[0];
+            localStorage.setItem('daymaker_daily_quote', motivation);
+            localStorage.setItem('daymaker_quote_date', today);
+        } catch (error) {
+            console.error("DigitalPlanner: getAIAdvice error", error);
+            setAiMessage("You are doing great! Keep showing up every single day.");
+        } finally {
+            setIsThinking(false);
+        }
+    };
 
-    // Autosave Page Number
     useEffect(() => {
-        localStorage.setItem('daymaker_planner_page', pageNumber.toString());
-    }, [pageNumber]);
+        const today = new Date().toISOString().split('T')[0];
+        const savedDate = localStorage.getItem('daymaker_quote_date');
+        const savedMsg = localStorage.getItem('daymaker_daily_quote');
 
-    // Autosave Planner Data
-    useEffect(() => {
-        const handler = setTimeout(() => {
+        const needsFetch = savedDate !== today ||
+            !savedMsg ||
+            savedMsg === "Tap below to get your daily motivation!" ||
+            savedMsg === "Ready for your daily motivation? Tap below.";
+
+        if (needsFetch) {
+            getAIAdvice();
+        }
+    }, []);
+
+    const saveAllData = async () => {
+        if (user) {
+            const docRef = doc(db, `users/${user.uid}/planner`, 'settings');
+            await setDoc(docRef, {
+                plannerData,
+                currentStyle,
+                imgPos,
+                pageNumber,
+                updatedAt: new Date().toISOString()
+            });
+        } else {
             localStorage.setItem('daymaker_planner_data', JSON.stringify(plannerData));
-        }, 500);
-        return () => clearTimeout(handler);
-    }, [plannerData]);
-
-    // Autosave Current Style
-    useEffect(() => {
-        localStorage.setItem('daymaker_planner_style', JSON.stringify(currentStyle));
-    }, [currentStyle]);
-
-    // Autosave Image Position
-    useEffect(() => {
-        localStorage.setItem('daymaker_planner_img_pos', JSON.stringify(imgPos));
-    }, [imgPos]);
-
-
-    const saveAllData = () => {
-        localStorage.setItem('daymaker_planner_data', JSON.stringify(plannerData));
-        localStorage.setItem('daymaker_planner_page', pageNumber.toString());
-        localStorage.setItem('daymaker_planner_style', JSON.stringify(currentStyle));
-        alert("Planner Synced Successfully!");
+            localStorage.setItem('daymaker_planner_style', JSON.stringify(currentStyle));
+            alert("Planner Synced Successfully!");
+        }
     };
 
     function onDocumentLoadSuccess({ numPages }) {

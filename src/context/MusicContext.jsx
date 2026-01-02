@@ -1,4 +1,7 @@
 import React, { createContext, useContext, useState, useRef, useEffect } from 'react';
+import { db } from '../firebase';
+import { doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { useAuth } from './AuthContext';
 
 const MusicContext = createContext();
 
@@ -29,28 +32,64 @@ export const MusicProvider = ({ children }) => {
 
     const DEFAULT_SPOTIFY = "https://open.spotify.com/embed/playlist/0vvXsWCC9xrXsKd4FyS8kM?utm_source=generator&theme=0";
 
-    // State: Player Mode ('internal' | 'spotify')
-    const [playerMode, setPlayerMode] = useState(() => localStorage.getItem('daymaker_player_mode') || 'internal');
+    const { user } = useAuth();
+    const [playerMode, setPlayerMode] = useState('internal');
+    const [spotifyUrl, setSpotifyUrl] = useState(DEFAULT_SPOTIFY);
+    const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [isInitialLoad, setIsInitialLoad] = useState(true);
 
-    // State: Spotify Embed
-    const [spotifyUrl, setSpotifyUrl] = useState(() => localStorage.getItem('daymaker_spotify_url') || DEFAULT_SPOTIFY);
-
-    // Initialize state from localStorage
-    const [currentTrackIndex, setCurrentTrackIndex] = useState(() => {
-        const saved = localStorage.getItem('daymaker_music_index');
-        return saved ? parseInt(saved) : 0;
-    });
-
-    const [isPlaying, setIsPlaying] = useState(() => {
-        const saved = localStorage.getItem('daymaker_music_playing');
-        return saved === 'true';
-    });
-
-    // Save Modes
+    // 1. Sync from Firestore/LocalStorage
     useEffect(() => {
-        localStorage.setItem('daymaker_player_mode', playerMode);
-        localStorage.setItem('daymaker_spotify_url', spotifyUrl);
-    }, [playerMode, spotifyUrl]);
+        if (!user) {
+            const mode = localStorage.getItem('daymaker_player_mode');
+            const url = localStorage.getItem('daymaker_spotify_url');
+            const idx = localStorage.getItem('daymaker_music_index');
+
+            if (mode) setPlayerMode(mode);
+            if (url) setSpotifyUrl(url);
+            if (idx) setCurrentTrackIndex(parseInt(idx));
+
+            setIsInitialLoad(false);
+            return;
+        }
+
+        const docRef = doc(db, `users/${user.uid}/music`, 'preferences');
+        const unsubscribe = onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                setPlayerMode(data.playerMode || 'internal');
+                setSpotifyUrl(data.spotifyUrl || DEFAULT_SPOTIFY);
+                setCurrentTrackIndex(data.currentTrackIndex || 0);
+            }
+            setIsInitialLoad(false);
+        });
+
+        return () => unsubscribe();
+    }, [user]);
+
+    // 2. Autosave to Firestore/LocalStorage
+    useEffect(() => {
+        if (isInitialLoad) return;
+
+        const handler = setTimeout(async () => {
+            if (user) {
+                const docRef = doc(db, `users/${user.uid}/music`, 'preferences');
+                await setDoc(docRef, {
+                    playerMode,
+                    spotifyUrl,
+                    currentTrackIndex,
+                    updatedAt: new Date().toISOString()
+                });
+            } else {
+                localStorage.setItem('daymaker_player_mode', playerMode);
+                localStorage.setItem('daymaker_spotify_url', spotifyUrl);
+                localStorage.setItem('daymaker_music_index', currentTrackIndex.toString());
+            }
+        }, 1000);
+
+        return () => clearTimeout(handler);
+    }, [playerMode, spotifyUrl, currentTrackIndex, user, isInitialLoad]);
 
     // Use a ref for the Audio object to persist it without re-renders
     const audioRef = useRef(null);
@@ -107,9 +146,9 @@ export const MusicProvider = ({ children }) => {
             audio.pause();
         }
         // Save state
+        // Local state-only persistence for play/pause to avoid unnecessary DB writes for every toggle
         localStorage.setItem('daymaker_music_playing', isPlaying);
-        localStorage.setItem('daymaker_music_index', currentTrackIndex);
-    }, [isPlaying, currentTrackIndex]);
+    }, [isPlaying]);
 
     const togglePlay = () => {
         if (playerMode === 'spotify') {

@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { RefreshCw, Calendar, CheckCircle2, XCircle, ChevronDown } from 'lucide-react';
 import { analyzeDayPerformance } from '../services/gemini';
+import { db } from '../firebase';
+import { collection, query, onSnapshot } from 'firebase/firestore';
+import { useAuth } from '../context/AuthContext';
 
 
 export const Insights = () => {
+    const { user } = useAuth();
     // 1. History & Year State
     const [history, setHistory] = useState({});
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -18,20 +22,34 @@ export const Insights = () => {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
 
     useEffect(() => {
-        // Load History
-        const saved = localStorage.getItem('daymaker_analytics_history');
-        if (saved) {
-            const data = JSON.parse(saved);
-            setHistory(data);
-        }
-
-        // Generate Year Range (2029 down to 2026)
+        // Load Available Years
         const years = [];
         for (let y = 2029; y >= 2026; y--) {
             years.push(y);
         }
         setAvailableYears(years);
-    }, []);
+
+        if (!user) {
+            // Unauthenticated: Load from localStorage
+            const saved = localStorage.getItem('daymaker_analytics_history');
+            if (saved) setHistory(JSON.parse(saved));
+            return;
+        }
+
+        // Authenticated: Load from Firestore Collection
+        const historyRef = collection(db, `users/${user.uid}/history`);
+        const q = query(historyRef);
+
+        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+            const historyData = {};
+            querySnapshot.forEach((doc) => {
+                historyData[doc.id] = doc.data();
+            });
+            setHistory(historyData);
+        });
+
+        return () => unsubscribe();
+    }, [user]);
 
     // 4. Effect: Recalculate Stats
     useEffect(() => {

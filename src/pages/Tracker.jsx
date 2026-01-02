@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Clock, CheckCircle2, Circle, Trash2, Zap, Brain, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import { db } from '../firebase';
+import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { useAuth } from '../context/AuthContext';
 
 const INITIAL_TASKS = [
     { id: 1, title: 'Morning Standup', time: '09:00', category: 'work', status: 'completed' },
@@ -9,51 +9,52 @@ const INITIAL_TASKS = [
 ];
 
 export const Tracker = () => {
+    const { user } = useAuth();
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [tasks, setTasks] = useState([]);
     const [showForm, setShowForm] = useState(false);
 
     const isInitialLoad = useRef(true);
 
-    // Initial Load & Selected Date Sync
+    // Initial Load: Fetch from Firestore (if logged in) or localStorage
     useEffect(() => {
-        const historyStr = localStorage.getItem('daymaker_analytics_history');
-        const history = historyStr ? JSON.parse(historyStr) : {};
+        isInitialLoad.current = true;
 
-        // Migration: If we have old tasks but no history for today, migrate them
-        const oldTasksStr = localStorage.getItem('daymaker_tasks');
-        const todayKey = new Date().toISOString().split('T')[0];
-
-        isInitialLoad.current = true; // Block persistence during state sync
-
-        if (!history[selectedDate]) {
-            if (selectedDate === todayKey && oldTasksStr) {
-                const oldTasks = JSON.parse(oldTasksStr);
-                setTasks(oldTasks);
-                // Clear old storage after first migration
-                localStorage.removeItem('daymaker_tasks');
-            } else {
-                setTasks(selectedDate === todayKey ? INITIAL_TASKS : []);
-            }
-        } else {
-            setTasks(history[selectedDate].tasks || []);
+        if (!user) {
+            // Unauthenticated: Use localStorage
+            const historyStr = localStorage.getItem('daymaker_analytics_history');
+            const history = historyStr ? JSON.parse(historyStr) : {};
+            setTasks(history[selectedDate]?.tasks || (selectedDate === new Date().toISOString().split('T')[0] ? INITIAL_TASKS : []));
+            setTimeout(() => { isInitialLoad.current = false; }, 100);
+            return;
         }
 
-        // Use a tiny timeout or just let the next effect run
-        // Actually, better to just flag it.
-        setTimeout(() => { isInitialLoad.current = false; }, 100);
-    }, [selectedDate]);
+        // Authenticated: Listen to Firestore
+        const docRef = doc(db, `users/${user.uid}/history`, selectedDate);
+        const unsubscribe = onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists()) {
+                setTasks(docSnap.data().tasks || []);
+            } else if (selectedDate === new Date().toISOString().split('T')[0]) {
+                // Check if local storage has migration data
+                const localHistory = JSON.parse(localStorage.getItem('daymaker_analytics_history') || '{}');
+                if (localHistory[selectedDate]) {
+                    setTasks(localHistory[selectedDate].tasks);
+                } else {
+                    setTasks(INITIAL_TASKS);
+                }
+            } else {
+                setTasks([]);
+            }
+            setTimeout(() => { isInitialLoad.current = false; }, 100);
+        });
 
-    // Persistence & History Tracking (Triggers when tasks change)
-    useEffect(() => {
-        if (isInitialLoad.current) return;
-        if (tasks === null) return; // Wait for load
+        return () => unsubscribe();
+    }, [selectedDate, user]);
 
-        const historyStr = localStorage.getItem('daymaker_analytics_history');
-        const history = historyStr ? JSON.parse(historyStr) : {};
-
-        const total = tasks.length;
-        const completed = tasks.filter(t => t.status === 'completed').length;
+    // Data Sync: Save to Firestore (if logged in) or localStorage
+    const syncData = async (updatedTasks) => {
+        const total = updatedTasks.length;
+        const completed = updatedTasks.filter(t => t.status === 'completed').length;
 
         let status = 'red';
         if (total > 0) {
@@ -62,17 +63,25 @@ export const Tracker = () => {
             else status = 'red';
         }
 
-        // Only update history if it's different to avoid loops (though tasks change usually implies intent)
-        history[selectedDate] = {
+        const data = {
             date: selectedDate,
             total,
             completed,
             status,
-            tasks: tasks
+            tasks: updatedTasks,
+            updatedAt: new Date().toISOString()
         };
 
-        localStorage.setItem('daymaker_analytics_history', JSON.stringify(history));
-    }, [tasks, selectedDate]);
+        if (user) {
+            const docRef = doc(db, `users/${user.uid}/history`, selectedDate);
+            await setDoc(docRef, data);
+        } else {
+            const historyStr = localStorage.getItem('daymaker_analytics_history');
+            const history = historyStr ? JSON.parse(historyStr) : {};
+            history[selectedDate] = data;
+            localStorage.setItem('daymaker_analytics_history', JSON.stringify(history));
+        }
+    };
 
     const changeDate = (days) => {
         const d = new Date(selectedDate);
@@ -80,7 +89,7 @@ export const Tracker = () => {
         setSelectedDate(d.toISOString().split('T')[0]);
     };
 
-    const addTask = (e) => {
+    const addTask = async (e) => {
         e.preventDefault();
         const formData = new FormData(e.target);
         const newTask = {
@@ -92,17 +101,20 @@ export const Tracker = () => {
         };
         const updated = [...tasks, newTask].sort((a, b) => a.time.localeCompare(b.time));
         setTasks(updated);
+        await syncData(updated);
         setShowForm(false);
     };
 
-    const toggleTask = (id) => {
+    const toggleTask = async (id) => {
         const updated = tasks.map(t => t.id === id ? { ...t, status: t.status === 'completed' ? 'upcoming' : 'completed' } : t);
         setTasks(updated);
+        await syncData(updated);
     };
 
-    const deleteTask = (id) => {
+    const deleteTask = async (id) => {
         const updated = tasks.filter(t => t.id !== id);
         setTasks(updated);
+        await syncData(updated);
     };
 
     return (
