@@ -10,16 +10,16 @@ if (API_KEY && API_KEY !== 'YOUR_GEMINI_API_KEY_HERE') {
 }
 
 export const analyzeDayPerformance = async (dateData, contextStats) => {
-    console.log("Gemini Service: analyzeDayPerformance started");
     if (!API_KEY || API_KEY === 'YOUR_GEMINI_API_KEY_HERE') {
         throw new Error("API_KEY_MISSING");
     }
 
-    // List of models to try in order of preference
     const modelsToTry = [
         "gemini-2.5-flash",
         "gemini-2.5-pro",
+        "gemini-2.0-flash-exp",
         "gemini-1.5-flash",
+        "gemini-1.5-flash-001",
         "gemini-1.5-pro",
         "gemini-pro"
     ];
@@ -64,47 +64,51 @@ export const analyzeDayPerformance = async (dateData, contextStats) => {
                 return JSON.parse(jsonMatch[0]);
             }
 
-            console.warn(`Model ${modelName} returned invalid JSON format, trying next model.`);
-            lastError = new Error(`Model ${modelName} returned invalid JSON format.`);
+            console.warn(`Gemini: Model ${modelName} returned invalid JSON.`);
             continue;
         } catch (error) {
-            console.warn(`Model ${modelName} failed, trying next...`, error);
+            console.warn(`Gemini: Model ${modelName} failed. Trying next...`);
             lastError = error;
             continue;
         }
     }
 
-    // If we get here, all models failed
-    console.error("All Gemini models failed:", lastError);
+    console.error("Gemini Service: analyzeDayPerformance failed on all models.", lastError);
     throw lastError;
 };
 
 export const getDailyMotivation = async () => {
-    console.log("Gemini Service: Fetching daily motivation...");
     if (!API_KEY || API_KEY === 'YOUR_GEMINI_API_KEY_HERE') {
         throw new Error("API_KEY_MISSING");
     }
 
-    const modelsToTry = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-flash", "gemini-pro"];
+    const modelsToTry = [
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-2.0-flash-exp",
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-001",
+        "gemini-1.5-pro",
+        "gemini-pro"
+    ];
     let lastError = null;
 
     for (const modelName of modelsToTry) {
         try {
-            console.log(`Gemini Service: Trying model ${modelName}...`);
             const model = genAI.getGenerativeModel({ model: modelName });
             const prompt = "You are a world-class motivational coach. Provide ONE extremely powerful, unique, and concise motivational quote (max 20 words) for someone starting their day. Just the text.";
 
             const result = await model.generateContent(prompt);
             const response = await result.response;
             const text = response.text().trim().replace(/^"|"$/g, '');
-            console.log(`Gemini Service: Success with ${modelName}`);
             return text;
         } catch (error) {
-            console.warn(`Gemini Service: Model ${modelName} fetch failed:`, error);
+            console.warn(`Gemini: Model ${modelName} failed. Trying next...`);
             lastError = error;
             continue;
         }
     }
-    console.error("Gemini Service: All models failed for motivation fetch.");
+
+    console.error("Gemini Service: getDailyMotivation failed on all models.", lastError);
     throw lastError;
 };

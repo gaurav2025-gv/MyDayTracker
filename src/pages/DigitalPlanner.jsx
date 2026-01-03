@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { ChevronLeft, ChevronRight, Save, Trash2, ZoomIn, ZoomOut, Bold, Italic, Type, Palette, Minus, Plus, Search, LayoutTemplate, Image as ImageIcon, Upload, Sparkles, BrainCircuit, Move, Check } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Save, Trash2, ZoomIn, ZoomOut, Bold, Italic, Type, Palette, Minus, Plus, Search, LayoutTemplate, Image as ImageIcon, Upload, Sparkles, BrainCircuit, Move, Check, RefreshCw } from 'lucide-react';
 import { getDailyMotivation } from '../services/gemini';
 import { db } from '../firebase';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
@@ -193,6 +193,9 @@ export const DigitalPlanner = () => {
 
         if (needsFetch) {
             getAIAdvice();
+        } else {
+            console.log("DigitalPlanner: Using saved motivation for today.");
+            setAiMessage(savedMsg);
         }
     }, []);
 
@@ -501,11 +504,22 @@ export const DigitalPlanner = () => {
                                 <p className="text-slate-500 text-[10px] font-medium tracking-[0.2em] uppercase">Consulting AI Partner</p>
                             </div>
                         ) : (
-                            <div className="relative z-10">
-                                <span className="text-[10px] font-bold text-indigo-400/80 uppercase tracking-[0.3em] mb-3 block">Today's Focus Intent</span>
-                                <h1 className="text-xl md:text-2xl font-serif italic text-white/90 leading-tight px-4">
-                                    "{aiMessage}"
-                                </h1>
+                            <div className="relative z-10 flex flex-col items-center gap-4">
+                                <div>
+                                    <span className="text-[10px] font-bold text-indigo-400/80 uppercase tracking-[0.3em] mb-3 block">Today's Focus Intent</span>
+                                    <h1 className="text-xl md:text-2xl font-serif italic text-white/90 leading-tight px-4">
+                                        "{aiMessage}"
+                                    </h1>
+                                </div>
+
+                                <button
+                                    onClick={getAIAdvice}
+                                    disabled={isThinking}
+                                    className="flex items-center gap-2 bg-indigo-500/20 hover:bg-indigo-500/40 text-indigo-200 text-xs px-4 py-2 rounded-full border border-indigo-500/30 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:pointer-events-none mt-2"
+                                >
+                                    <RefreshCw size={12} className={isThinking ? "animate-spin" : ""} />
+                                    {isThinking ? "Generating..." : "Get New Motivation"}
+                                </button>
                             </div>
                         )}
                     </div>
