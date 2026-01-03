@@ -13,7 +13,7 @@ import {
     Brain
 } from 'lucide-react';
 import { db } from '../firebase';
-import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 
 const INITIAL_TASKS = [
@@ -40,29 +40,28 @@ export const Tracker = () => {
             const history = historyStr ? JSON.parse(historyStr) : {};
             setTasks(history[selectedDate]?.tasks || (selectedDate === new Date().toISOString().split('T')[0] ? INITIAL_TASKS : []));
             setTimeout(() => { isInitialLoad.current = false; }, 100);
-            return;
-        }
-
-        // Authenticated: Listen to Firestore
-        const docRef = doc(db, `users/${user.uid}/history`, selectedDate);
-        const unsubscribe = onSnapshot(docRef, (docSnap) => {
-            if (docSnap.exists()) {
-                setTasks(docSnap.data().tasks || []);
-            } else if (selectedDate === new Date().toISOString().split('T')[0]) {
-                // Check if local storage has migration data
-                const localHistory = JSON.parse(localStorage.getItem('daymaker_analytics_history') || '{}');
-                if (localHistory[selectedDate]) {
-                    setTasks(localHistory[selectedDate].tasks);
+        } else {
+            // Authenticated: Listen to Firestore
+            const docRef = doc(db, `users/${user.uid}/history`, selectedDate);
+            const unsubscribe = onSnapshot(docRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    setTasks(docSnap.data().tasks || []);
+                } else if (selectedDate === new Date().toISOString().split('T')[0]) {
+                    // Check if local storage has migration data
+                    const localHistory = JSON.parse(localStorage.getItem('daymaker_analytics_history') || '{}');
+                    if (localHistory[selectedDate]) {
+                        setTasks(localHistory[selectedDate].tasks);
+                    } else {
+                        setTasks(INITIAL_TASKS);
+                    }
                 } else {
-                    setTasks(INITIAL_TASKS);
+                    setTasks([]);
                 }
-            } else {
-                setTasks([]);
-            }
-            setTimeout(() => { isInitialLoad.current = false; }, 100);
-        });
+                setTimeout(() => { isInitialLoad.current = false; }, 100);
+            });
 
-        return () => unsubscribe();
+            return () => unsubscribe();
+        }
     }, [selectedDate, user]);
 
     // Data Sync: Save to Firestore (if logged in) or localStorage
