@@ -24,7 +24,14 @@ const INITIAL_TASKS = [
 
 export const Tracker = () => {
     const { user } = useAuth();
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    // Helper to get local date string YYYY-MM-DD
+    const getLocalDate = () => {
+        const d = new Date();
+        const offset = d.getTimezoneOffset() * 60000;
+        return new Date(d.getTime() - offset).toISOString().split('T')[0];
+    };
+
+    const [selectedDate, setSelectedDate] = useState(getLocalDate());
     const [tasks, setTasks] = useState([]);
     const [showForm, setShowForm] = useState(false);
 
@@ -38,7 +45,7 @@ export const Tracker = () => {
             // Unauthenticated: Use localStorage
             const historyStr = localStorage.getItem('daymaker_analytics_history');
             const history = historyStr ? JSON.parse(historyStr) : {};
-            setTasks(history[selectedDate]?.tasks || (selectedDate === new Date().toISOString().split('T')[0] ? INITIAL_TASKS : []));
+            setTasks(history[selectedDate]?.tasks || (selectedDate === getLocalDate() ? INITIAL_TASKS : []));
             setTimeout(() => { isInitialLoad.current = false; }, 100);
         } else {
             // Authenticated: Listen to Firestore
@@ -46,7 +53,7 @@ export const Tracker = () => {
             const unsubscribe = onSnapshot(docRef, (docSnap) => {
                 if (docSnap.exists()) {
                     setTasks(docSnap.data().tasks || []);
-                } else if (selectedDate === new Date().toISOString().split('T')[0]) {
+                } else if (selectedDate === getLocalDate()) {
                     // Check if local storage has migration data
                     const localHistory = JSON.parse(localStorage.getItem('daymaker_analytics_history') || '{}');
                     if (localHistory[selectedDate]) {
@@ -186,9 +193,9 @@ export const Tracker = () => {
 
                 <div className="flex gap-4">
                     <button
-                        onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
+                        onClick={() => setSelectedDate(getLocalDate())}
                         className={`px-6 py-3 rounded-xl font-bold text-sm transition-all flex items-center gap-2
-                            ${selectedDate === new Date().toISOString().split('T')[0]
+                            ${selectedDate === getLocalDate()
                                 ? 'bg-cyan-400/10 text-cyan-400 border border-cyan-400/20 shadow-[0_0_15px_rgba(0,201,200,0.1)]'
                                 : 'bg-white/5 text-slate-400 border border-white/10 hover:text-white hover:bg-white/10'}
                         `}
